@@ -3,67 +3,133 @@ package com.game.repository;
 import com.game.entity.Player;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
 import org.hibernate.cfg.Configuration;
 import org.hibernate.cfg.Environment;
+import org.hibernate.query.NativeQuery;
 import org.springframework.stereotype.Repository;
 
 import jakarta.annotation.PreDestroy;
+
 import java.util.List;
 import java.util.Optional;
-import java.util.Properties;
 
 @Repository(value = "db")
-public class PlayerRepositoryDB implements IPlayerRepository {
+public class PlayerRepositoryDB implements IPlayerRepository, AutoCloseable {
     private final SessionFactory sessionFactory;
+
     public PlayerRepositoryDB() {
-        Properties properties = new Properties();
-
-        properties.put(Environment.DIALECT, "org.hibernate.dialect.MySQL8Dialect");
-        properties.put(Environment.DRIVER, "com.mysql.jdbc.Driver");
-        properties.put(Environment.URL, "jdbc:mysql://localhost:3306/mysql");
-        properties.put(Environment.USER, "root");
-        properties.put(Environment.PASS, "mysql");
-        properties.put(Environment.HBM2DDL_AUTO, "update");
-
-        sessionFactory = new Configuration()
-                .addAnnotatedClass(Player.class)
-                .addProperties(properties)
-                .buildSessionFactory();
+        Configuration configuration = new Configuration();
+        configuration.configure();
+        configuration.addAnnotatedClass(Player.class);
+        sessionFactory = configuration.buildSessionFactory();
     }
 
     @Override
     public List<Player> getAll(int pageNumber, int pageSize) {
         Session session = sessionFactory.openSession();
-        return null;
+        Transaction tx = session.beginTransaction();
+        try {
+            NativeQuery<Player> query = session.createNativeQuery("SELECT * FROM rpg.player", Player.class);
+            query.setFirstResult(pageNumber * pageSize);
+            query.setMaxResults(pageSize);
+            tx.commit();
+            return query.list();
+        } catch (Exception e) {
+            tx.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            session.close();
+        }
     }
 
     @Override
     public int getAllCount() {
-        return 0;
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+        try {
+            long playersTotal = session.createNamedQuery(Player.COUNT_PLAYERS, Long.class)
+                    .getSingleResult();
+            tx.commit();
+            return Math.toIntExact(playersTotal);
+        } catch (Exception e) {
+            tx.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            session.close();
+        }
     }
 
     @Override
     public Player save(Player player) {
-        return null;
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+        try {
+            session.save(player);
+            tx.commit();
+            return player;
+        } catch (Exception e) {
+            tx.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            session.close();
+        }
     }
 
     @Override
     public Player update(Player player) {
-        return null;
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+        try {
+            session.update(player);
+            tx.commit();
+            return player;
+        } catch (Exception e) {
+            tx.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            session.close();
+        }
     }
 
     @Override
     public Optional<Player> findById(long id) {
-        return Optional.empty();
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+        try {
+            Player player = session.find(Player.class, id);
+            tx.commit();
+            return Optional.ofNullable(player);
+        } catch (Exception e){
+            tx.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            session.close();
+        }
     }
 
     @Override
     public void delete(Player player) {
-
+        Session session = sessionFactory.openSession();
+        Transaction tx = session.beginTransaction();
+        try{
+            session.remove(player);
+            tx.commit();
+        } catch (Exception e){
+            tx.rollback();
+            throw new RuntimeException(e);
+        } finally {
+            session.close();
+        }
     }
 
     @PreDestroy
     public void beforeStop() {
+        sessionFactory.close();
+    }
 
+    @Override
+    public void close() {
+        sessionFactory.close();
     }
 }
